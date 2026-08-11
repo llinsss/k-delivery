@@ -12,7 +12,7 @@ export function WorkspaceShell({ kind, active, name, children }: { kind: "mercha
     <aside className="workspace-sidebar">
       <Link className="brand workspace-brand" href="/"><span>K</span> K-Deliver</Link>
       <div className="workspace-account"><div>{kind === "merchant" ? <BriefcaseBusiness/> : <KeyRound/>}</div><span><small>{kind === "merchant" ? "MERCHANT" : "DELIVERY PROVIDER"}</small><strong>{name}</strong></span></div>
-      <nav>{items.map(([id, label, href]) => { const Icon = icons[id]; return <Link className={active === id ? "active" : ""} href={href} key={id}><Icon size={18}/>{label}</Link>; })}</nav>
+      <nav>{(items as unknown as [keyof typeof icons, string, string][]).map(([id, label, href]) => { const Icon = icons[id]; return <Link className={active === id ? "active" : ""} href={href} key={id}><Icon size={18}/>{label}</Link>; })}</nav>
       <div className="workspace-switch"><small>NETWORK WORKSPACES</small><Link href={kind === "merchant" ? "/provider" : "/merchant"}>{kind === "merchant" ? "Provider portal" : "Merchant portal"}</Link></div>
     </aside>
     <main className="workspace-main">{children}</main>
