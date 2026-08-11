@@ -1,0 +1,509 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CUSTOMER
+  MERCHANT
+  RIDER
+  PROVIDER_ADMIN
+  OPERATIONS
+  SUPPORT
+  PLATFORM_ADMIN
+}
+enum AccountStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REJECTED
+}
+enum VehicleType {
+  BICYCLE
+  MOTORCYCLE
+  CAR
+  VAN
+}
+enum DeliveryPriority {
+  STANDARD
+  EXPRESS
+}
+enum DeliveryStatus {
+  CREATED
+  PRICED
+  SEARCHING
+  ASSIGNED
+  RIDER_ARRIVING
+  AT_PICKUP
+  PICKED_UP
+  IN_TRANSIT
+  AT_DESTINATION
+  DELIVERED
+  CANCELLED
+  FAILED
+  DISPUTED
+}
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+enum AvailabilityStatus {
+  OFFLINE
+  ONLINE
+  BUSY
+  PAUSED
+}
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+enum WebhookStatus {
+  PENDING
+  DELIVERED
+  FAILED
+}
+enum ProviderOperatingModel {
+  PLATFORM_FULFILLMENT
+  INFRASTRUCTURE_ONLY
+  HYBRID
+}
+enum ProviderApplicationStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  phone String @unique
+  passwordHash String
+  name String
+  role UserRole @default(CUSTOMER)
+  status AccountStatus @default(ACTIVE)
+  merchant Merchant?
+  rider Rider?
+  providerMemberships ProviderMember[]
+  locations Location[]
+  createdDeliveries Delivery[] @relation("DeliveryCreator")
+  ratingsGiven Rating[] @relation("RatingAuthor")
+  notifications Notification[]
+  auditLogs AuditLog[] @relation("AuditActor")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Merchant {
+  id String @id @default(cuid())
+  userId String @unique
+  businessName String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries Delivery[]
+  createdAt DateTime @default(now())
+}
+
+model Provider {
+  id String @id @default(cuid())
+  name String
+  slug String @unique
+  status AccountStatus @default(PENDING)
+  operatingModel ProviderOperatingModel @default(HYBRID)
+  commissionBps Int @default(1500)
+  members ProviderMember[]
+  riders Rider[]
+  vehicles Vehicle[]
+  deliveries Delivery[]
+  apiKeys ApiKey[]
+  webhooks Webhook[]
+  hubs Hub[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProviderApplication {
+  id String @id @default(cuid())
+  companyName String
+  cacNumber String?
+  yearsOperating Int?
+  contactName String
+  email String
+  phone String
+  officeAddress String
+  operatingModel ProviderOperatingModel
+  bicycleCount Int @default(0)
+  motorcycleCount Int @default(0)
+  carCount Int @default(0)
+  zones String[]
+  currentVolumePerDay Int?
+  integrationPreference String
+  notes String?
+  status ProviderApplicationStatus @default(SUBMITTED)
+  reviewedById String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([email, companyName])
+  @@index([status, createdAt])
+}
+
+model ProviderMember {
+  providerId String
+  userId String
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([providerId, userId])
+}
+
+model Rider {
+  id String @id @default(cuid())
+  userId String @unique
+  providerId String?
+  status AccountStatus @default(PENDING)
+  availability AvailabilityStatus @default(OFFLINE)
+  latitude Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+  lastLocationAt DateTime?
+  rating Decimal @default(5) @db.Decimal(3, 2)
+  reliabilityScore Decimal @default(1) @db.Decimal(4, 3)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider Provider? @relation(fields: [providerId], references: [id])
+  vehicles Vehicle[]
+  assignedDeliveries Delivery[] @relation("AssignedRider")
+  offers DeliveryOffer[]
+  earnings WalletTransaction[]
+  ratings Rating[] @relation("RiderRatings")
+  documents Document[]
+  @@index([availability, status])
+  @@index([providerId])
+}
+
+model Vehicle {
+  id String @id @default(cuid())
+  type VehicleType
+  registration String? @unique
+  active Boolean @default(true)
+  capacityKg Decimal? @db.Decimal(8, 2)
+  riderId String?
+  providerId String?
+  rider Rider? @relation(fields: [riderId], references: [id])
+  provider Provider? @relation(fields: [providerId], references: [id])
+  deliveries Delivery[]
+  hubs Hub[]
+  @@index([type, active])
+}
+
+model Zone {
+  id String @id @default(cuid())
+  name String
+  code String @unique
+  city String @default("Kaduna")
+  active Boolean @default(true)
+  preferredVehicle VehicleType?
+  operationalHours Json?
+  locations Location[]
+  hubs Hub[]
+  pricingRules PricingRule[]
+  pickupDeliveries Delivery[] @relation("PickupZone")
+  dropoffDeliveries Delivery[] @relation("DropoffZone")
+  @@index([city, active])
+}
+
+model Hub {
+  id String @id @default(cuid())
+  name String
+  latitude Decimal @db.Decimal(9, 6)
+  longitude Decimal @db.Decimal(9, 6)
+  capacity Int
+  active Boolean @default(true)
+  zoneId String
+  vehicleId String?
+  providerId String?
+  zone Zone @relation(fields: [zoneId], references: [id])
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+  provider Provider? @relation(fields: [providerId], references: [id])
+}
+
+model Location {
+  id String @id @default(cuid())
+  userId String?
+  zoneId String?
+  label String?
+  kadunaCode String? @unique
+  formattedAddress String
+  landmark String?
+  buildingDescription String?
+  city String @default("Kaduna")
+  contactName String?
+  contactPhone String?
+  latitude Decimal @db.Decimal(9, 6)
+  longitude Decimal @db.Decimal(9, 6)
+  user User? @relation(fields: [userId], references: [id])
+  zone Zone? @relation(fields: [zoneId], references: [id])
+  pickups Delivery[] @relation("PickupLocation")
+  dropoffs Delivery[] @relation("DropoffLocation")
+  createdAt DateTime @default(now())
+  @@index([zoneId])
+}
+
+model Delivery {
+  id String @id @default(cuid())
+  publicId String @unique
+  trackingToken String @unique @default(cuid())
+  creatorId String
+  merchantId String?
+  providerId String?
+  riderId String?
+  vehicleId String?
+  pickupLocationId String
+  dropoffLocationId String
+  pickupZoneId String?
+  dropoffZoneId String?
+  status DeliveryStatus @default(CREATED)
+  priority DeliveryPriority @default(STANDARD)
+  packageType String
+  packageDescription String?
+  packageSize String
+  weightKg Decimal? @db.Decimal(8, 2)
+  photoUrl String?
+  distanceKm Decimal @db.Decimal(8, 2)
+  estimatedMinutes Int
+  recommendedVehicle VehicleType
+  quotedAmountKobo Int
+  recipientPinHash String
+  idempotencyKey String?
+  expiresAt DateTime?
+  creator User @relation("DeliveryCreator", fields: [creatorId], references: [id])
+  merchant Merchant? @relation(fields: [merchantId], references: [id])
+  provider Provider? @relation(fields: [providerId], references: [id])
+  rider Rider? @relation("AssignedRider", fields: [riderId], references: [id])
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+  pickup Location @relation("PickupLocation", fields: [pickupLocationId], references: [id])
+  dropoff Location @relation("DropoffLocation", fields: [dropoffLocationId], references: [id])
+  pickupZone Zone? @relation("PickupZone", fields: [pickupZoneId], references: [id])
+  dropoffZone Zone? @relation("DropoffZone", fields: [dropoffZoneId], references: [id])
+  events DeliveryEvent[]
+  offers DeliveryOffer[]
+  payment Payment?
+  ledger Transaction[]
+  rating Rating?
+  proof ProofOfDelivery?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([creatorId, idempotencyKey])
+  @@index([status, createdAt])
+  @@index([riderId, status])
+  @@index([providerId, status])
+  @@index([merchantId, createdAt])
+  @@index([pickupZoneId])
+}
+
+model DeliveryEvent {
+  id String @id @default(cuid())
+  deliveryId String
+  fromStatus DeliveryStatus?
+  toStatus DeliveryStatus
+  actorId String?
+  latitude Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+  metadata Json?
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@index([deliveryId, createdAt])
+}
+
+model DeliveryOffer {
+  id String @id @default(cuid())
+  deliveryId String
+  riderId String
+  status OfferStatus @default(PENDING)
+  score Decimal @db.Decimal(8, 4)
+  offeredAt DateTime @default(now())
+  expiresAt DateTime
+  respondedAt DateTime?
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  rider Rider @relation(fields: [riderId], references: [id])
+  @@index([riderId, status, expiresAt])
+}
+
+model PricingRule {
+  id String @id @default(cuid())
+  name String
+  zoneId String?
+  vehicleType VehicleType?
+  active Boolean @default(true)
+  baseFeeKobo Int
+  perKmKobo Int
+  vehicleMultiplierBps Int @default(10000)
+  expressMultiplierBps Int @default(14000)
+  minimumFeeKobo Int
+  waitingFeePerMinuteKobo Int @default(0)
+  cancellationFeeKobo Int @default(0)
+  effectiveFrom DateTime @default(now())
+  effectiveTo DateTime?
+  zone Zone? @relation(fields: [zoneId], references: [id])
+  @@index([active, zoneId, vehicleType])
+}
+
+model Payment {
+  id String @id @default(cuid())
+  deliveryId String @unique
+  reference String @unique
+  provider String
+  status PaymentStatus @default(PENDING)
+  amountKobo Int
+  currency String @default("NGN")
+  providerPayload Json?
+  verifiedAt DateTime?
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Transaction {
+  id String @id @default(cuid())
+  deliveryId String
+  type String
+  amountKobo Int
+  currency String @default("NGN")
+  metadata Json?
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+  createdAt DateTime @default(now())
+  @@index([deliveryId, type])
+}
+
+model Wallet {
+  id String @id @default(cuid())
+  ownerId String @unique
+  balanceKobo Int @default(0)
+  currency String @default("NGN")
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id String @id @default(cuid())
+  walletId String
+  riderId String?
+  amountKobo Int
+  type String
+  reference String @unique
+  wallet Wallet @relation(fields: [walletId], references: [id])
+  rider Rider? @relation(fields: [riderId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model ProofOfDelivery {
+  id String @id @default(cuid())
+  deliveryId String @unique
+  method String
+  photoUrl String?
+  latitude Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+  verifiedAt DateTime @default(now())
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+}
+
+model Rating {
+  id String @id @default(cuid())
+  deliveryId String @unique
+  authorId String
+  riderId String
+  score Int
+  comment String?
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+  author User @relation("RatingAuthor", fields: [authorId], references: [id])
+  rider Rider @relation("RiderRatings", fields: [riderId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model ApiKey {
+  id String @id @default(cuid())
+  providerId String
+  name String
+  prefix String
+  keyHash String @unique
+  lastUsedAt DateTime?
+  revokedAt DateTime?
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@index([prefix])
+}
+
+model Webhook {
+  id String @id @default(cuid())
+  providerId String
+  url String
+  secretHash String
+  events String[]
+  active Boolean @default(true)
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  attempts WebhookAttempt[]
+}
+
+model WebhookAttempt {
+  id String @id @default(cuid())
+  webhookId String
+  eventId String
+  eventType String
+  payload Json
+  status WebhookStatus @default(PENDING)
+  attempt Int @default(0)
+  nextAttemptAt DateTime?
+  responseCode Int?
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@index([status, nextAttemptAt])
+}
+
+model Notification {
+  id String @id @default(cuid())
+  userId String
+  channel String
+  eventType String
+  title String
+  body String
+  status String @default("PENDING")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  sentAt DateTime?
+}
+
+model Document {
+  id String @id @default(cuid())
+  riderId String
+  type String
+  fileUrl String
+  status AccountStatus @default(PENDING)
+  rider Rider @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+  actorId String?
+  action String
+  resourceType String
+  resourceId String
+  metadata Json?
+  actor User? @relation("AuditActor", fields: [actorId], references: [id])
+  createdAt DateTime @default(now())
+  @@index([resourceType, resourceId, createdAt])
+}
+
+model Dispute {
+  id String @id @default(cuid())
+  deliveryId String @unique
+  reason String
+  status String @default("OPEN")
+  resolution String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

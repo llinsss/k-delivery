@@ -1,0 +1,7 @@
+import Link from "next/link";
+import { db } from "@/lib/db";
+import { formatNaira } from "@/lib/format";
+import { StatusBadge, WorkspaceShell } from "@/components/business/WorkspaceShell";
+export const dynamic = "force-dynamic";
+export default async function ProviderJobs() { const provider = await db.provider.findFirstOrThrow(); const jobs = await db.delivery.findMany({ where: { providerId: provider.id }, include: { pickup: true, dropoff: true, rider: { include: { user: true } } }, orderBy: { createdAt: "desc" }, take: 50 }); return <WorkspaceShell kind="provider" active="jobs" name={provider.name}><header className="workspace-header"><div><p className="kicker">FULFILLMENT QUEUE</p><h1>Provider jobs</h1><p>Assigned and completed network work for your fleet.</p></div></header><section className="workspace-panel"><div className="data-table"><div className="table-head"><span>Job</span><span>Route</span><span>Rider</span><span>Earning basis</span><span>Status</span></div>{jobs.map(job => <Link className="table-row" href={`/track/${job.publicId}`} key={job.id}><strong>{job.publicId}<small>{job.priority.toLowerCase()}</small></strong><span>{job.pickup.formattedAddress}<small>to {job.dropoff.formattedAddress}</small></span><span>{job.rider?.user.name ?? "Needs rider"}</span><span>{formatNaira(Math.round(job.quotedAmountKobo * (1 - provider.commissionBps / 10000)))}</span><StatusBadge status={job.status}/></Link>)}</div></section></WorkspaceShell>; }
+

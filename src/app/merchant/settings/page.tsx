@@ -1,0 +1,4 @@
+import { db } from "@/lib/db";
+import { WorkspaceShell } from "@/components/business/WorkspaceShell";
+export const dynamic = "force-dynamic";
+export default async function MerchantSettings() { const merchant = await db.merchant.findFirstOrThrow({ include: { user: true } }); return <WorkspaceShell kind="merchant" active="settings" name={merchant.businessName}><header className="workspace-header"><div><p className="kicker">BUSINESS PROFILE</p><h1>Merchant settings</h1><p>Information used for receipts, saved pickups and delivery contacts.</p></div></header><section className="workspace-panel settings-form"><label><span>Business name</span><input defaultValue={merchant.businessName}/></label><label><span>Account email</span><input defaultValue={merchant.user.email}/></label><label><span>Phone number</span><input defaultValue={merchant.user.phone}/></label><button className="primary-action">Save settings</button></section></WorkspaceShell>; }

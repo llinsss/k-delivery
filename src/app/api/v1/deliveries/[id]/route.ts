@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { authenticateProvider } from "@/lib/provider-auth";
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) { const auth = await authenticateProvider(request); if (!auth) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "A valid provider API key is required" } }, { status: 401 }); const { id } = await params; const delivery = await db.delivery.findFirst({ where: { publicId: id, providerId: auth.providerId }, include: { pickup: true, dropoff: true, events: { orderBy: { createdAt: "asc" } } } }); if (!delivery) return NextResponse.json({ error: { code: "NOT_FOUND", message: "Delivery not found" } }, { status: 404 }); return NextResponse.json({ data: delivery }); }

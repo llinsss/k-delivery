@@ -1,0 +1,6 @@
+import { RadioTower } from "lucide-react";
+import { db } from "@/lib/db";
+import { WorkspaceShell } from "@/components/business/WorkspaceShell";
+export const dynamic = "force-dynamic";
+export default async function ProviderWebhooks() { const provider = await db.provider.findFirstOrThrow({ include: { webhooks: { include: { attempts: { orderBy: { createdAt: "desc" }, take: 1 } } } } }); return <WorkspaceShell kind="provider" active="webhooks" name={provider.name}><header className="workspace-header"><div><p className="kicker">EVENT DELIVERY</p><h1>Webhooks</h1><p>Receive signed delivery lifecycle events in your own system.</p></div><button className="primary-action"><RadioTower/> Add endpoint</button></header><section className="workspace-panel">{provider.webhooks.length ? provider.webhooks.map(webhook => <div className="api-key" key={webhook.id}><RadioTower/><span><strong>{webhook.url}</strong><code>{webhook.events.join(", ")}</code></span><small>{webhook.active ? "Active" : "Disabled"}</small></div>) : <div className="credential-empty"><RadioTower/><h3>No webhook endpoints</h3><p>Add an HTTPS endpoint to receive delivery.created, assigned, picked_up, delivered and failure events.</p></div>}</section></WorkspaceShell>; }
+
