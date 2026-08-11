@@ -16,7 +16,8 @@ export async function GET(request: Request) {
   const auth = await authenticateProvider(request); if (!auth) return unauthorized();
   const url = new URL(request.url); const take = Math.min(Number(url.searchParams.get("limit") ?? 20), 100);
   const deliveries = await db.delivery.findMany({ where: { providerId: auth.providerId }, include: { pickup: true, dropoff: true }, orderBy: { createdAt: "desc" }, take });
-  return NextResponse.json({ data: deliveries.map(item => ({ id: item.publicId, status: item.status, priority: item.priority, priceKobo: item.quotedAmountKobo, currency: "NGN", pickup: item.pickup, dropoff: item.dropoff, trackingUrl: `${process.env.APP_URL ?? url.origin}/track/${item.publicId}`, createdAt: item.createdAt })) });
+  type DeliveryWithLocations = (typeof deliveries)[number];
+  return NextResponse.json({ data: deliveries.map((item: DeliveryWithLocations) => ({ id: item.publicId, status: item.status, priority: item.priority, priceKobo: item.quotedAmountKobo, currency: "NGN", pickup: item.pickup, dropoff: item.dropoff, trackingUrl: `${process.env.APP_URL ?? url.origin}/track/${item.publicId}`, createdAt: item.createdAt })) });
 }
 
 export async function POST(request: Request) {
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
   const quote = calculatePrice({ distanceKm: route.distanceKm, vehicle, priority: parsed.data.priority }, { baseFeeKobo: 50000, perKmKobo: 12000, minimumFeeKobo: 60000, vehicleMultiplierBps: multiplier, expressMultiplierBps: 14000 });
   const publicId = `KD-${randomBytes(3).toString("hex").toUpperCase()}`;
   const pin = String(Math.floor(1000 + Math.random() * 9000));
-  const delivery = await db.$transaction(async tx => {
+  const delivery = await db.$transaction(async (tx) => {
     const pickup = await tx.location.create({ data: { formattedAddress: parsed.data.pickup.address, landmark: parsed.data.pickup.landmark, contactName: parsed.data.pickup.contactName, contactPhone: parsed.data.pickup.contactPhone, latitude: parsed.data.pickup.latitude, longitude: parsed.data.pickup.longitude } });
     const dropoff = await tx.location.create({ data: { formattedAddress: parsed.data.dropoff.address, landmark: parsed.data.dropoff.landmark, contactName: parsed.data.dropoff.contactName, contactPhone: parsed.data.dropoff.contactPhone, latitude: parsed.data.dropoff.latitude, longitude: parsed.data.dropoff.longitude } });
     return tx.delivery.create({ data: { publicId, creatorId: member.userId, providerId: auth.providerId, pickupLocationId: pickup.id, dropoffLocationId: dropoff.id, status: "PRICED", priority: parsed.data.priority, packageType: parsed.data.package.type, packageDescription: parsed.data.package.description, packageSize: parsed.data.package.size, weightKg: parsed.data.package.weightKg, distanceKm: route.distanceKm, estimatedMinutes: route.durationMinutes, recommendedVehicle: vehicle, quotedAmountKobo: quote.totalKobo, recipientPinHash: await hash(pin, 10), idempotencyKey, events: { create: [{ toStatus: "CREATED" }, { fromStatus: "CREATED", toStatus: "PRICED" }] } } });
